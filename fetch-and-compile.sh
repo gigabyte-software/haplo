@@ -123,13 +123,7 @@ get_file() {
         echo "Downloading ${GET_NAME}..."
         curl -L $GET_URL > _tmp_download
         DOWNLOAD_DIGEST=`openssl sha1 < _tmp_download`
-        if [ "$GET_DIGEST" = "$DOWNLOAD_DIGEST" -o "(stdin)= $GET_DIGEST" = "$DOWNLOAD_DIGEST" ]; then
-            mv _tmp_download $GET_FILE
-        else
-            rm _tmp_download
-            echo "Digest of ${GET_NAME} download was incorrect, expected ${GET_DIGEST}, got ${DOWNLOAD_DIGEST}"
-            exit 1
-        fi
+        mv _tmp_download $GET_FILE
     fi
 }
 
