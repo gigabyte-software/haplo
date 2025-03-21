@@ -1,0 +1,96 @@
+# Use Ubuntu 20.04 as it's one of the supported versions
+FROM ubuntu:20.04
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Etc/UTC
+
+# Set up timezone
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+# Install all required dependencies
+RUN apt-get update && apt-get install -y \
+    sudo \
+    git \
+    g++ \
+    make \
+    openjdk-8-jdk \
+    maven \
+    avahi-daemon \
+    uuid-dev \
+    curl \
+    patch \
+    zlib1g-dev \
+    libxapian30 \
+    libxapian-dev \
+    postgresql-12 \
+    postgresql-server-dev-12 \
+    postgresql-contrib-12 \
+    iputils-ping \
+    dnsutils \
+    supervisor \
+    iptables \
+    iptables-persistent \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create haplo user
+RUN useradd -m -s /bin/bash haplo && \
+    echo 'haplo ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/haplo && \
+    chmod 0440 /etc/sudoers.d/haplo
+
+# Create required directories with proper permissions
+RUN mkdir -p /haplo/database \
+    /haplo/log \
+    /haplo/tmp \
+    /haplo/run \
+    /haplo/generated-downloads \
+    /haplo/files \
+    /haplo/textweighting \
+    /haplo/plugins \
+    /haplo/messages \
+    /haplo/messages/app_create \
+    /haplo/messages/app_modify \
+    /haplo/messages/spool \
+    /haplo/sslcerts \
+    /haplo/textidx \
+    /opt/haplo \
+    /home/haplo/haplo-dev-support/vendor \
+    && chown -R haplo:haplo /haplo /opt/haplo /home/haplo
+
+# Set up port forwarding (80->8080, 443->8443)
+RUN iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 8080 && \
+    iptables -t nat -A PREROUTING -p tcp --dport 443 -j REDIRECT --to-port 8443 && \
+    iptables-save > /etc/iptables/rules.v4
+
+# Switch to the haplo user
+USER haplo
+WORKDIR /home/haplo
+
+# Download and set up JRuby
+RUN curl -o ~/haplo-dev-support/vendor/jruby.tar.gz https://s3.amazonaws.com/jruby.org/downloads/9.2.21.0/jruby-bin-9.2.21.0.tar.gz && \
+    cd ~/haplo-dev-support/vendor && \
+    tar -xzf jruby.tar.gz && \
+    ln -sf jruby-9.2.21.0 jruby && \
+    rm jruby.tar.gz
+
+# Clone the Haplo repository
+RUN git clone https://github.com/haplo-org/haplo.git
+
+# Expose the ports that Haplo uses
+EXPOSE 8080 8443
+
+# Switch back to root for the final commands
+USER root
+
+# Copy installation scripts
+COPY haplo-install.sh /usr/local/bin/haplo-install.sh
+COPY fetch-and-compile.sh /usr/local/bin/fetch-and-compile.sh
+RUN chmod +x /usr/local/bin/haplo-install.sh /usr/local/bin/fetch-and-compile.sh
+
+# Set up PostgreSQL
+RUN mkdir -p /home/haplo/haplo-dev-support/pg && \
+    chown -R haplo:haplo /home/haplo/haplo-dev-support/pg && \
+    su - haplo -c 'cd /home/haplo && /usr/lib/postgresql/12/bin/initdb -E UTF8 -D ~/haplo-dev-support/pg'
+
+# Keep container running
+CMD ["tail", "-f", "/dev/null"] 

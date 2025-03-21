@@ -9,6 +9,10 @@ set -e
 
 . config/paths-`uname`.sh
 
+# Set explicit JRUBY_HOME for Docker environment
+JRUBY_HOME=/home/haplo/haplo-dev-support/vendor/jruby
+export JRUBY_HOME
+
 if [ X$KFRAMEWORK_ENV = Xproduction ]
 then
     K_DATABASE=haplo
@@ -32,7 +36,7 @@ fi
 
 echo Recreate base database...
 psql -c "DROP DATABASE IF EXISTS $K_DATABASE" -d template1
-createdb --encoding UTF8 $TABLESPACEARG $K_DATABASE
+createdb --encoding UTF8 $TABLESPACEARG $K_DATABASE --template=template0
 
 psql $K_DATABASE < db/database_setup.sql
 

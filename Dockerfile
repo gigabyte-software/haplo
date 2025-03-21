@@ -11,7 +11,8 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 # Copy installation scripts
 COPY haplo-install.sh /usr/local/bin/haplo-install.sh
 COPY fetch-and-compile.sh /usr/local/bin/fetch-and-compile.sh
-RUN chmod +x /usr/local/bin/haplo-install.sh /usr/local/bin/fetch-and-compile.sh
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/haplo-install.sh /usr/local/bin/fetch-and-compile.sh /usr/local/bin/entrypoint.sh
 
 # Install dependencies and set up Haplo
 RUN apt-get update && apt-get install -y \
@@ -31,6 +32,7 @@ RUN apt-get update && apt-get install -y \
     postgresql-12 \
     postgresql-server-dev-12 \
     postgresql-contrib-12 \
+    iputils-ping \
     supervisor \
     && rm -rf /var/lib/apt/lists/*
 
@@ -53,6 +55,9 @@ RUN mkdir -p /haplo/database \
 
 # Expose the ports that Haplo uses
 EXPOSE 8080 8443
+
+# Set the entrypoint
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 
 # Keep container running
 CMD ["tail", "-f", "/dev/null"]
