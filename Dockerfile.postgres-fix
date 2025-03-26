@@ -1,0 +1,77 @@
+FROM ubuntu:20.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Etc/UTC
+
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+# Install PostgreSQL and sudo
+RUN apt-get update && apt-get install -y \
+    sudo \
+    postgresql-12 \
+    postgresql-client-12 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create a simple start script
+RUN echo '#!/bin/bash\n\
+set -e\n\
+\n\
+# Make sure directory exists and has proper ownership\n\
+mkdir -p /var/run/postgresql\n\
+chown -R postgres:postgres /var/run/postgresql\n\
+chmod 2777 /var/run/postgresql\n\
+\n\
+# Make sure config and data dirs are owned by postgres\n\
+chown -R postgres:postgres /etc/postgresql\n\
+chown -R postgres:postgres /var/lib/postgresql\n\
+\n\
+# Configure PostgreSQL\n\
+echo "listen_addresses = '"'"'*'"'"'" >> /etc/postgresql/12/main/postgresql.conf\n\
+echo "unix_socket_directories = '"'"'/var/run/postgresql'"'"'" >> /etc/postgresql/12/main/postgresql.conf\n\
+echo "local all all trust" > /etc/postgresql/12/main/pg_hba.conf\n\
+echo "host all all 127.0.0.1/32 trust" >> /etc/postgresql/12/main/pg_hba.conf\n\
+echo "host all all ::1/128 trust" >> /etc/postgresql/12/main/pg_hba.conf\n\
+echo "host all all 0.0.0.0/0 trust" >> /etc/postgresql/12/main/pg_hba.conf\n\
+\n\
+# Start PostgreSQL\n\
+echo "Starting PostgreSQL..."\n\
+sudo -u postgres service postgresql start\n\
+\n\
+# Wait for PostgreSQL to be ready\n\
+echo "Waiting for PostgreSQL to be ready..."\n\
+max_attempts=10\n\
+attempts=0\n\
+until sudo -u postgres psql -c "SELECT 1" >/dev/null 2>&1 || [ $attempts -eq $max_attempts ]; do\n\
+  attempts=$((attempts+1))\n\
+  echo "Waiting for PostgreSQL to start ($attempts/$max_attempts)..."\n\
+  sleep 1\n\
+done\n\
+\n\
+if [ $attempts -eq $max_attempts ]; then\n\
+  echo "ERROR: PostgreSQL failed to start within the allocated time."\n\
+  exit 1\n\
+fi\n\
+\n\
+# Create haplo user if it doesn'"'"'t exist\n\
+if ! sudo -u postgres psql -tAc "\\\\du" | grep -q "haplo"; then\n\
+  echo "Creating haplo database user..."\n\
+  sudo -u postgres psql -c "CREATE ROLE haplo WITH LOGIN CREATEDB PASSWORD '"'"'haplo'"'"';"\n\
+fi\n\
+\n\
+# Create haplo_development database if it doesn'"'"'t exist\n\
+if ! sudo -u postgres psql -tAc "\\\\list" | grep -q "haplo_development"; then\n\
+  echo "Creating haplo_development database..."\n\
+  sudo -u postgres psql -c "CREATE DATABASE haplo_development OWNER haplo ENCODING '"'"'UTF8'"'"' TEMPLATE template0;"\n\
+fi\n\
+\n\
+echo "PostgreSQL is running and configured. Press Ctrl+C to stop."\n\
+tail -f /dev/null\n\
+' > /usr/local/bin/start-pg.sh
+
+RUN chmod +x /usr/local/bin/start-pg.sh
+
+# Expose PostgreSQL port
+EXPOSE 5432
+
+# Start PostgreSQL when container starts
+CMD ["/usr/local/bin/start-pg.sh"] 

@@ -1,0 +1,77 @@
+# Base image with necessary packages
+FROM ubuntu:20.04
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Etc/UTC
+
+# Set up timezone
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+# Install Haplo dependencies
+RUN apt-get update && apt-get install -y \
+    sudo \
+    git \
+    g++ \
+    make \
+    openjdk-8-jdk \
+    maven \
+    avahi-daemon \
+    uuid-dev \
+    curl \
+    patch \
+    zlib1g-dev \
+    libxapian30 \
+    libxapian-dev \
+    postgresql-12 \
+    postgresql-server-dev-12 \
+    postgresql-contrib-12 \
+    iputils-ping \
+    supervisor \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create a user for running the application
+RUN useradd -m -s /bin/bash haplo && \
+    echo 'haplo ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/haplo && \
+    chmod 0440 /etc/sudoers.d/haplo
+
+# Make Haplo user a member of the postgres group and vice versa
+RUN usermod -a -G postgres haplo && \
+    usermod -a -G haplo postgres
+
+# Setup PostgreSQL directories with proper permissions
+RUN mkdir -p /var/run/postgresql && \
+    chown -R postgres:postgres /var/run/postgresql && \
+    chmod 2777 /var/run/postgresql
+
+# Make sure PostgreSQL config directory has proper ownership
+RUN chown -R postgres:postgres /etc/postgresql && \
+    chown -R postgres:postgres /var/lib/postgresql
+
+# Configure PostgreSQL
+RUN echo "listen_addresses = '*'" >> /etc/postgresql/12/main/postgresql.conf && \
+    echo "unix_socket_directories = '/var/run/postgresql'" >> /etc/postgresql/12/main/postgresql.conf && \
+    echo "local all all trust" > /etc/postgresql/12/main/pg_hba.conf && \
+    echo "host all all 127.0.0.1/32 trust" >> /etc/postgresql/12/main/pg_hba.conf && \
+    echo "host all all ::1/128 trust" >> /etc/postgresql/12/main/pg_hba.conf && \
+    echo "host all all 0.0.0.0/0 trust" >> /etc/postgresql/12/main/pg_hba.conf
+
+# Create data directories with proper permissions
+RUN mkdir -p /haplo && chown haplo:haplo /haplo
+RUN for subdir in log tmp run generated-downloads files textweighting plugins messages messages/app_create messages/app_modify messages/spool sslcerts; do \
+    mkdir -p /haplo/$subdir && chown haplo:haplo /haplo/$subdir; \
+done
+RUN mkdir -p /haplo/textidx && chown postgres:postgres /haplo/textidx
+
+RUN mkdir -p /opt/haplo && chown haplo:haplo /opt/haplo
+
+# Copy installation scripts
+COPY haplo-install.sh /usr/local/bin/haplo-install.sh
+COPY start-haplo.sh /usr/local/bin/start-haplo.sh
+RUN chmod +x /usr/local/bin/start-haplo.sh /usr/local/bin/haplo-install.sh
+
+# Expose necessary ports
+EXPOSE 5432 8080 8443
+
+# Default command
+CMD ["/usr/local/bin/start-haplo.sh"] 

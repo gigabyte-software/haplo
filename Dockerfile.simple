@@ -1,0 +1,46 @@
+# Base image with necessary packages
+FROM ubuntu:20.04
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Etc/UTC
+
+# Set up timezone
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+# Install PostgreSQL and other required packages
+RUN apt-get update && apt-get install -y \
+    sudo \
+    postgresql-12 \
+    postgresql-client-12 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create a user for running the application
+RUN useradd -m -s /bin/bash haplo && \
+    echo 'haplo ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/haplo && \
+    chmod 0440 /etc/sudoers.d/haplo
+
+# Setup PostgreSQL directories
+RUN mkdir -p /var/run/postgresql && \
+    chown -R postgres:postgres /var/run/postgresql && \
+    chmod 777 /var/run/postgresql
+
+# Create data directories with proper permissions
+RUN mkdir -p /haplo && \
+    chown -R haplo:haplo /haplo && \
+    chmod 777 /haplo
+
+# Configure PostgreSQL to use /var/run/postgresql for the socket
+RUN echo "unix_socket_directories = '/var/run/postgresql'" >> /etc/postgresql/12/main/postgresql.conf && \
+    echo "listen_addresses = '0.0.0.0'" >> /etc/postgresql/12/main/postgresql.conf
+
+# Copy our start script
+COPY start-postgres.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/start-postgres.sh
+
+# Expose PostgreSQL ports
+EXPOSE 5432 8080 8443
+
+# Set the entrypoint
+ENTRYPOINT ["/usr/local/bin/start-postgres.sh"] 

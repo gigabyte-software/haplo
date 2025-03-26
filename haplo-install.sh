@@ -204,7 +204,11 @@ fi
 #
 if [ ! -f haplo/fetch-and-compile.sh ]; then
     echo " *** Haplo cloning from github ***"
-    git clone https://github.com/haplo-org/haplo.git
+    # Using HTTPS URL to avoid SSH key issues in container
+    git clone https://github.com/gigabyte-software/haplo.git
+    cd haplo
+    git checkout ek  # Using the specific branch
+    cd ..
     echo " *** Haplo github clone done ***"
 fi
 #

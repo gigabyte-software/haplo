@@ -53,12 +53,6 @@ RUN mkdir -p /haplo/database \
     /haplo/textidx \
     /opt/haplo
 
-# Create a subdirectory for PostgreSQL socket
-RUN mkdir -p /var/run/postgresql && chown postgres:postgres /var/run/postgresql && chmod 777 /var/run/postgresql
-
-# Configure PostgreSQL to use the standard socket directory
-RUN echo "unix_socket_directories = '/var/run/postgresql'" >> /etc/postgresql/12/main/postgresql.conf
-
 # Expose the ports that Haplo uses
 EXPOSE 8080 8443
 
