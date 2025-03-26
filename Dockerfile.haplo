@@ -28,6 +28,8 @@ RUN apt-get update && apt-get install -y \
     postgresql-contrib-12 \
     iputils-ping \
     supervisor \
+    openssl \
+    dnsutils \
     && rm -rf /var/lib/apt/lists/*
 
 # Create a user for running the application
@@ -48,7 +50,7 @@ RUN mkdir -p /var/run/postgresql && \
 RUN chown -R postgres:postgres /etc/postgresql && \
     chown -R postgres:postgres /var/lib/postgresql
 
-# Configure PostgreSQL
+# Configure PostgreSQL for Docker environment
 RUN echo "listen_addresses = '*'" >> /etc/postgresql/12/main/postgresql.conf && \
     echo "unix_socket_directories = '/var/run/postgresql'" >> /etc/postgresql/12/main/postgresql.conf && \
     echo "local all all trust" > /etc/postgresql/12/main/pg_hba.conf && \
@@ -59,16 +61,34 @@ RUN echo "listen_addresses = '*'" >> /etc/postgresql/12/main/postgresql.conf && 
 # Create data directories with proper permissions
 RUN mkdir -p /haplo && chown haplo:haplo /haplo
 RUN for subdir in log tmp run generated-downloads files textweighting plugins messages messages/app_create messages/app_modify messages/spool sslcerts; do \
-    mkdir -p /haplo/$subdir && chown haplo:haplo /haplo/$subdir; \
+    mkdir -p /haplo/$subdir && chown haplo:haplo /haplo/$subdir && chmod 755 /haplo/$subdir; \
 done
 RUN mkdir -p /haplo/textidx && chown postgres:postgres /haplo/textidx
 
 RUN mkdir -p /opt/haplo && chown haplo:haplo /opt/haplo
 
-# Copy installation scripts
-COPY haplo-install.sh /usr/local/bin/haplo-install.sh
+# Create SSL certificates directory
+RUN mkdir -p /tmp/haplo-sslcerts && \
+    chown haplo:haplo /tmp/haplo-sslcerts && \
+    chmod 755 /tmp/haplo-sslcerts
+
+# Create a self-signed SSL certificate for Haplo
+RUN cd /tmp/haplo-sslcerts && \
+    openssl genrsa -out server.key 2048 && \
+    openssl req -new -batch -subj "/CN=haplo.local" -key server.key -out server.crt.csr && \
+    openssl x509 -req -sha256 -days 3650 -in server.crt.csr -out server.crt -signkey server.key && \
+    chmod 644 server.crt server.crt.csr && chmod 600 server.key && \
+    cp server.crt server.crt.csr server.key /haplo/sslcerts/ && \
+    chown -R haplo:haplo /haplo/sslcerts
+
+# Copy modified installation script that skips iptables setup
+COPY haplo-install.sh /usr/local/bin/
+RUN sed 's/sudo iptables/echo "SKIPPED in Docker: sudo iptables"/g' /usr/local/bin/haplo-install.sh > /usr/local/bin/haplo-install-docker.sh && \
+    chmod +x /usr/local/bin/haplo-install-docker.sh
+
+# Create a proper start script
 COPY start-haplo.sh /usr/local/bin/start-haplo.sh
-RUN chmod +x /usr/local/bin/start-haplo.sh /usr/local/bin/haplo-install.sh
+RUN chmod +x /usr/local/bin/start-haplo.sh
 
 # Expose necessary ports
 EXPOSE 5432 8080 8443
